@@ -1,46 +1,50 @@
-var express = require('express');
-var path = require('path');
-var favicon = require('serve-favicon');
-var logger = require('morgan');
-var cookieParser = require('cookie-parser');
-var bodyParser = require('body-parser');
+'use strict';
 
-var index = require('./routes/index');
-var users = require('./routes/users');
+const express = require('express');
+const bodyParser = require('body-parser');
+const inputAccessor = require('./app/middleware/InputAccessorMiddleware');
+const corsMiddleware = require('./app/middleware/CorsMiddleware');
+const validatorMiddleware = require('./app/middleware/ValidatorMiddleware');
+const apiEndpoint = require('./app/api/ApiEndpoint');
+const config = require('./app/lib/config');
+const app = express();
 
-var app = express();
+app.use(bodyParser.json({
+  limit: '5mb'
+}));
 
-// view engine setup
-app.set('views', path.join(__dirname, 'views'));
-app.set('view engine', 'ejs');
+app.use(bodyParser.urlencoded({
+  extended: false,
+  limit: '5mb'
+}));
 
-// uncomment after placing your favicon in /public
-//app.use(favicon(path.join(__dirname, 'public', 'favicon.ico')));
-app.use(logger('dev'));
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(cookieParser());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(validatorMiddleware);
+app.use(corsMiddleware);
+app.use(inputAccessor);
+app.use(apiEndpoint(express));
 
-app.use('/', index);
-app.use('/users', users);
-
-// catch 404 and forward to error handler
-app.use(function(req, res, next) {
-  var err = new Error('Not Found');
+// handle 404 error
+app.use((req, res, next) => {
+  let err = new Error('Path Not Found');
   err.status = 404;
   next(err);
 });
 
-// error handler
-app.use(function(err, req, res, next) {
-  // set locals, only providing error in development
-  res.locals.message = err.message;
-  res.locals.error = req.app.get('env') === 'development' ? err : {};
-
-  // render the error page
-  res.status(err.status || 500);
-  res.render('error');
+// handle server error
+app.use((err, req, res, next) => {
+  let statusCode = err.code;
+  if (statusCode >= 100 && statusCode < 600)
+    res.status(statusCode);
+  else
+    res.status(500);
+  let message = err.message;
+  delete err.message;
+  delete err.code;
+  res.json({
+    status: false,
+    message: message,
+    data: config.isDevelopment() ? err : {}
+  });
 });
 
 module.exports = app;
